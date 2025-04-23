@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { fetchStockData, fetchIntradayData } from '../lib/alphavantage';
 
 interface StockData {
   id: string;
@@ -24,89 +25,102 @@ interface StockState {
   fetchPriceHistory: (stockId: string) => Promise<{ price: number; recorded_at: string; }[]>;
 }
 
-const getFluctuationRange = (symbol: string) => {
-  // Lower fluctuation for stable stocks
-  if (['AMZN', 'GOOGL', 'JPM'].includes(symbol)) {
-    return 0.005; // 0.5% max change
-  }
-  // Higher fluctuation for other stocks
-  return 0.02; // 2% max change
-};
-
-const generateRandomPriceChange = (currentPrice: number, symbol: string) => {
-  const fluctuationRange = getFluctuationRange(symbol);
-  const changePercent = (Math.random() - 0.5) * 2 * fluctuationRange;
-  return currentPrice * (1 + changePercent);
-};
-
 export const useStockStore = create<StockState>((set, get) => {
   let updateInterval: NodeJS.Timeout | null = null;
+
+  const addPriceToHistory = (stock: StockData, newPrice: number) => {
+    const now = new Date().toISOString();
+    const lastPrice = stock.price_history[stock.price_history.length - 1]?.close || stock.current_price;
+    
+    return {
+      time: now,
+      open: lastPrice,
+      high: Math.max(lastPrice, newPrice),
+      low: Math.min(lastPrice, newPrice),
+      close: newPrice,
+    };
+  };
+
+  const updateStockPrices = async () => {
+    const { stocks } = get();
+    
+    // Update stocks sequentially to avoid API rate limits
+    for (const stock of stocks) {
+      try {
+        const data = await fetchStockData(stock.symbol, stock.id);
+        if (data) {
+          // Only update if price has changed
+          if (data.price !== stock.current_price) {
+            await get().updateStockPrice(stock.id, data.price);
+          }
+        }
+      } catch (error) {
+        console.error(`Error updating ${stock.symbol}:`, error);
+      }
+      
+      // Wait 12 seconds between requests to stay within API limits
+      await new Promise(resolve => setTimeout(resolve, 12000));
+    }
+  };
 
   return {
     stocks: [],
     setStocks: (stocks) => set({ stocks }),
     updateStockPrice: async (id, newPrice) => {
-      // Update price history in Supabase
-      const { error: historyError } = await supabase
-        .rpc('add_stock_price_history', {
-          p_stock_id: id,
-          p_price: newPrice
-        });
+      try {
+        // Add to price history in Supabase
+        const { error: historyError } = await supabase
+          .rpc('add_stock_price_history', {
+            p_stock_id: id,
+            p_price: newPrice
+          });
 
-      if (historyError) {
-        console.error('Error saving price history:', historyError);
-      }
+        if (historyError) {
+          console.error('Error saving price history:', historyError);
+        }
 
-      set((state) => ({
-        stocks: state.stocks.map((stock) => {
-          if (stock.id === id) {
-            const now = new Date().toISOString();
-            const lastPrice = stock.price_history[stock.price_history.length - 1]?.close || stock.current_price;
-            const newHistoryPoint = {
-              time: now,
-              open: lastPrice,
-              high: Math.max(lastPrice, newPrice),
-              low: Math.min(lastPrice, newPrice),
-              close: newPrice,
-            };
+        // Update local state
+        set((state) => ({
+          stocks: state.stocks.map((stock) => {
+            if (stock.id === id) {
+              // Only update if price has actually changed
+              if (stock.current_price !== newPrice) {
+                const newHistoryPoint = addPriceToHistory(stock, newPrice);
+                return {
+                  ...stock,
+                  current_price: newPrice,
+                  price_history: [...stock.price_history, newHistoryPoint].slice(-100), // Keep last 100 points
+                };
+              }
+            }
+            return stock;
+          }),
+        }));
 
-            return {
-              ...stock,
-              current_price: newPrice,
-              price_history: [...stock.price_history, newHistoryPoint].slice(-100),
-            };
-          }
-          return stock;
-        }),
-      }));
+        // Update stock price in Supabase
+        const { error: updateError } = await supabase
+          .from('stocks')
+          .update({ 
+            current_price: newPrice,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id);
 
-      // Update the current price in Supabase
-      const { error: updateError } = await supabase
-        .from('stocks')
-        .update({ current_price: newPrice })
-        .eq('id', id);
-
-      if (updateError) {
-        console.error('Error updating stock price:', updateError);
+        if (updateError) {
+          console.error('Error updating stock price:', updateError);
+        }
+      } catch (error) {
+        console.error('Error in updateStockPrice:', error);
       }
     },
-    startPriceUpdates: () => {
+    startPriceUpdates: async () => {
       if (updateInterval) return;
 
       // Initial update
-      const { stocks, updateStockPrice } = get();
-      stocks.forEach((stock) => {
-        const newPrice = generateRandomPriceChange(stock.current_price, stock.symbol);
-        updateStockPrice(stock.id, Number(newPrice.toFixed(2)));
-      });
+      await updateStockPrices();
 
-      updateInterval = setInterval(() => {
-        const { stocks, updateStockPrice } = get();
-        stocks.forEach((stock) => {
-          const newPrice = generateRandomPriceChange(stock.current_price, stock.symbol);
-          updateStockPrice(stock.id, Number(newPrice.toFixed(2)));
-        });
-      }, 5000);
+      // Update every minute, but stagger requests to stay within API limits
+      updateInterval = setInterval(updateStockPrices, 60000);
     },
     stopPriceUpdates: () => {
       if (updateInterval) {
@@ -115,17 +129,22 @@ export const useStockStore = create<StockState>((set, get) => {
       }
     },
     fetchPriceHistory: async (stockId: string) => {
-      const { data, error } = await supabase
-        .rpc('get_stock_price_history', {
-          p_stock_id: stockId
-        });
+      try {
+        const { data, error } = await supabase
+          .rpc('get_stock_price_history', {
+            p_stock_id: stockId
+          });
 
-      if (error) {
-        console.error('Error fetching price history:', error);
+        if (error) {
+          console.error('Error fetching price history:', error);
+          return [];
+        }
+
+        return data || [];
+      } catch (error) {
+        console.error('Error in fetchPriceHistory:', error);
         return [];
       }
-
-      return data || [];
     },
   };
 });
