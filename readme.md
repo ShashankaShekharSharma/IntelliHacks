@@ -4,33 +4,33 @@ This architecture outlines a modular, multi-layered trading system powered by qu
 # Architecture Overview
 1. Data Layer
   This layer ingests and processes raw financial and alternative data for feature extraction.
-  Market and Alternative Data
-  Data Ingestion Agent: Prepares data for downstream usage
-  Raw Data Store: Stores unprocessed data
-  Feature Agent: Converts raw data to usable features
-  Feature Store: Central hub of engineered features
+  Market and Alternative Data<br>
+  i. Data Ingestion Agent: Prepares data for downstream usage<br>
+  ii. Raw Data Store: Stores unprocessed data<br>
+  iii. Feature Agent: Converts raw data to usable features<br>
+  iv. Feature Store: Central hub of engineered features<br>
 
-2. Analysis Layer
-  Responsible for decision-making using AI and quantum agents.
-  Quantum Optimization Agent: Generates optimal portfolio weights
-  Risk Agent: Adjusts orders based on risk assessment
-  Strategy Agents: Generate trade signals based on analysis
+3. Analysis Layer
+  i. Responsible for decision-making using AI and quantum agents.<br>
+  ii. Quantum Optimization Agent: Generates optimal portfolio weights<br>
+  iii. Risk Agent: Adjusts orders based on risk assessment<br>
+  iv. Strategy Agents: Generate trade signals based on analysis<br>
 
 4. Execution Layer
-   Executes trade decisions while ensuring compliance.
-   Orchestration Agent: Manages execution flow
-   Execution Agent: Sends orders to brokers
-   Broker API: Communicates with the financial markets
-   Compliance Agent: Verifies regulatory compliance
+   i. Executes trade decisions while ensuring compliance.<br>
+   ii. Orchestration Agent: Manages execution flow<br>
+   iii. Execution Agent: Sends orders to brokers<br>
+   iv. Broker API: Communicates with the financial markets<br> (Future)
+   v. Compliance Agent: Verifies regulatory compliance<br> (Future)
 
 5. Feedback and Optimization Layer
-   Continuously improves the system using feedback loops.
-   Feedback Agent: Monitors performance and outcomes
-   Retraining Triggers: Detects when models need updating
-   Strategy / Quantum Agents: Retrained based on performance
+   i. Continuously improves the system using feedback loops.<br>
+   ii. Feedback Agent: Monitors performance and outcomes<br>
+   iii. Retraining Triggers: Detects when models need updating<br>
+   iv. Strategy / Quantum Agents: Retrained based on performance<br>
 
 # Key Highlights
-  - Quantum Optimization for portfolio balancing
-  - AI Strategy Agents that evolve over time
-  - Real-time Execution with compliance checks
-  - Feedback Loop enables self-improvement through retraining triggers
+  - Quantum Optimization for portfolio balancing<br>
+  - AI Strategy Agents that evolve over time<br>
+  - Real-time Execution with compliance checks<br>
+  - Feedback Loop enables self-improvement through retraining triggers<br>
